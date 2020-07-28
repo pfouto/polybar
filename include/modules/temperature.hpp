@@ -8,7 +8,7 @@
 POLYBAR_NS
 
 namespace modules {
-  enum class temp_state { NORMAL = 0, WARN };
+  enum class temp_state { NORMAL = 0, WARN, CRITICAL };
 
   class temperature_module : public timer_module<temperature_module> {
    public:
@@ -21,8 +21,10 @@ namespace modules {
    private:
     static constexpr auto TAG_LABEL = "<label>";
     static constexpr auto TAG_LABEL_WARN = "<label-warn>";
+    static constexpr auto TAG_LABEL_CRITICAL = "<label-critical>";
     static constexpr auto TAG_RAMP = "<ramp>";
     static constexpr auto FORMAT_WARN = "format-warn";
+    static constexpr auto FORMAT_CRITICAL = "format-critical";
 
     map<temp_state, label_t> m_label;
     ramp_t m_ramp;
@@ -32,6 +34,7 @@ namespace modules {
     // Base temperature used for where to start the ramp
     int m_tempbase = 0;
     int m_tempwarn = 0;
+    int m_tempcritical = 0;
     int m_temp = 0;
     // Percentage used in the ramp
     int m_perc = 0;

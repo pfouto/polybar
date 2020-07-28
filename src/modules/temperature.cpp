@@ -18,7 +18,8 @@ namespace modules {
     m_zone = m_conf.get(name(), "thermal-zone", 0);
     m_path = m_conf.get(name(), "hwmon-path", ""s);
     m_tempbase = m_conf.get(name(), "base-temperature", 0);
-    m_tempwarn = m_conf.get(name(), "warn-temperature", 80);
+    m_tempwarn = m_conf.get(name(), "warn-temperature", 60);
+    m_tempcritical = m_conf.get(name(), "critical-temperature", 80);
     m_interval = m_conf.get<decltype(m_interval)>(name(), "interval", 1s);
     m_units = m_conf.get(name(), "units", m_units);
 
@@ -32,6 +33,7 @@ namespace modules {
 
     m_formatter->add(DEFAULT_FORMAT, TAG_LABEL, {TAG_LABEL, TAG_RAMP});
     m_formatter->add(FORMAT_WARN, TAG_LABEL_WARN, {TAG_LABEL_WARN, TAG_RAMP});
+    m_formatter->add(FORMAT_CRITICAL, TAG_LABEL_CRITICAL, {TAG_LABEL_CRITICAL, TAG_RAMP});
 
     if (m_formatter->has(TAG_LABEL)) {
       m_label[temp_state::NORMAL] = load_optional_label(m_conf, name(), TAG_LABEL, "%temperature-c%");
@@ -39,13 +41,17 @@ namespace modules {
     if (m_formatter->has(TAG_LABEL_WARN)) {
       m_label[temp_state::WARN] = load_optional_label(m_conf, name(), TAG_LABEL_WARN, "%temperature-c%");
     }
+    if (m_formatter->has(TAG_LABEL_CRITICAL)) {
+      m_label[temp_state::CRITICAL] = load_optional_label(m_conf, name(), TAG_LABEL_CRITICAL, "%temperature-c%");
+    }
     if (m_formatter->has(TAG_RAMP)) {
       m_ramp = load_ramp(m_conf, name(), TAG_RAMP);
     }
 
     // Deprecation warning for the %temperature% token
     if((m_label[temp_state::NORMAL] && m_label[temp_state::NORMAL]->has_token("%temperature%")) ||
-        ((m_label[temp_state::WARN] && m_label[temp_state::WARN]->has_token("%temperature%")))) {
+        (m_label[temp_state::WARN] && m_label[temp_state::WARN]->has_token("%temperature%")) ||
+        (m_label[temp_state::CRITICAL] && m_label[temp_state::CRITICAL]->has_token("%temperature%"))) {
       m_log.warn("%s: The token `%%temperature%%` is deprecated, use `%%temperature-c%%` instead.", name());
     }
   }
@@ -53,7 +59,7 @@ namespace modules {
   bool temperature_module::update() {
     m_temp = std::strtol(file_util::contents(m_path).c_str(), nullptr, 10) / 1000.0f + 0.5f;
     int temp_f = floor(((1.8 * m_temp) + 32) + 0.5);
-    m_perc = math_util::cap(math_util::percentage(m_temp, m_tempbase, m_tempwarn), 0, 100);
+    m_perc = math_util::cap(math_util::percentage(m_temp, m_tempbase, m_tempcritical), 0, 100);
 
     string temp_c_string = to_string(m_temp);
     string temp_f_string = to_string(temp_f);
@@ -79,12 +85,17 @@ namespace modules {
     if (m_label[temp_state::WARN]) {
       replace_tokens(m_label[temp_state::WARN]);
     }
+    if (m_label[temp_state::CRITICAL]) {
+      replace_tokens(m_label[temp_state::CRITICAL]);
+    }
 
     return true;
   }
 
   string temperature_module::get_format() const {
-    if (m_temp >= m_tempwarn) {
+    if (m_temp >= m_tempcritical) {
+      return FORMAT_CRITICAL;
+    } else if (m_temp >= m_tempwarn){
       return FORMAT_WARN;
     } else {
       return DEFAULT_FORMAT;
@@ -94,6 +105,8 @@ namespace modules {
   bool temperature_module::build(builder* builder, const string& tag) const {
     if (tag == TAG_LABEL) {
       builder->node(m_label.at(temp_state::NORMAL));
+    } else if (tag == TAG_LABEL_CRITICAL) {
+      builder->node(m_label.at(temp_state::CRITICAL));
     } else if (tag == TAG_LABEL_WARN) {
       builder->node(m_label.at(temp_state::WARN));
     } else if (tag == TAG_RAMP) {
