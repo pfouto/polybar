@@ -1,14 +1,13 @@
+#include "modules/cpu.hpp"
+
 #include <fstream>
 #include <istream>
-
-#include "modules/cpu.hpp"
 
 #include "drawtypes/label.hpp"
 #include "drawtypes/progressbar.hpp"
 #include "drawtypes/ramp.hpp"
-#include "utils/math.hpp"
-
 #include "modules/meta/base.inl"
+#include "utils/math.hpp"
 
 POLYBAR_NS
 
@@ -18,9 +17,16 @@ namespace modules {
   cpu_module::cpu_module(const bar_settings& bar, string name_) : timer_module<cpu_module>(bar, move(name_)) {
     m_interval = m_conf.get<decltype(m_interval)>(name(), "interval", 1s);
 
+    m_cpu_atwarning = m_conf.get(name(), "warn-at", 50);
+    m_cpu_atcritical = m_conf.get(name(), "critical-at", 80);
+
     m_ramp_padding = m_conf.get<decltype(m_ramp_padding)>(name(), "ramp-coreload-spacing", 1);
 
     m_formatter->add(DEFAULT_FORMAT, TAG_LABEL, {TAG_LABEL, TAG_BAR_LOAD, TAG_RAMP_LOAD, TAG_RAMP_LOAD_PER_CORE});
+    m_formatter->add(
+        FORMAT_WARN, TAG_LABEL_WARN, {TAG_LABEL_WARN, TAG_BAR_LOAD, TAG_RAMP_LOAD, TAG_RAMP_LOAD_PER_CORE});
+    m_formatter->add(
+        FORMAT_CRITICAL, TAG_LABEL_CRITICAL, {TAG_LABEL_CRITICAL, TAG_BAR_LOAD, TAG_RAMP_LOAD, TAG_RAMP_LOAD_PER_CORE});
 
     // warmup cpu times
     read_values();
@@ -36,7 +42,13 @@ namespace modules {
       m_rampload_core = load_ramp(m_conf, name(), TAG_RAMP_LOAD_PER_CORE);
     }
     if (m_formatter->has(TAG_LABEL)) {
-      m_label = load_optional_label(m_conf, name(), TAG_LABEL, "%percentage%%");
+      m_label[cpu_state::NORMAL] = load_optional_label(m_conf, name(), TAG_LABEL, "%percentage%%");
+    }
+    if (m_formatter->has(TAG_LABEL_WARN)) {
+      m_label[cpu_state::WARN] = load_optional_label(m_conf, name(), TAG_LABEL_WARN, "%percentage%%");
+    }
+    if (m_formatter->has(TAG_LABEL_CRITICAL)) {
+      m_label[cpu_state::CRITICAL] = load_optional_label(m_conf, name(), TAG_LABEL_CRITICAL, "%percentage%%");
     }
   }
 
@@ -59,30 +71,52 @@ namespace modules {
       m_total += load;
       m_load.emplace_back(load);
 
-      if (m_label) {
-        percentage_cores.emplace_back(to_string(static_cast<int>(load + 0.5)));
+      auto states = {cpu_state::NORMAL, cpu_state::WARN, cpu_state::CRITICAL};
+      for (auto cpu_state : states) {
+        if (m_label[cpu_state]) {
+          auto label = m_label.at(cpu_state);
+          percentage_cores.emplace_back(to_string(static_cast<int>(load + 0.5)));
+        }
       }
     }
 
     m_total = m_total / static_cast<float>(cores_n);
 
-    if (m_label) {
-      m_label->reset_tokens();
-      m_label->replace_token("%percentage%", to_string(static_cast<int>(m_total + 0.5)));
-      m_label->replace_token("%percentage-sum%", to_string(static_cast<int>(m_total * static_cast<float>(cores_n) + 0.5)));
-      m_label->replace_token("%percentage-cores%", string_util::join(percentage_cores, "% ") + "%");
+    auto states = {cpu_state::NORMAL, cpu_state::WARN, cpu_state::CRITICAL};
+    for (auto cpu_state : states) {
+      if (m_label[cpu_state]) {
+        auto label = m_label.at(cpu_state);
+        label->reset_tokens();
+        label->replace_token("%percentage%", to_string(static_cast<int>(m_total + 0.5)));
+        label->replace_token(
+            "%percentage-sum%", to_string(static_cast<int>(m_total * static_cast<float>(cores_n) + 0.5)));
+        label->replace_token("%percentage-cores%", string_util::join(percentage_cores, "% ") + "%");
 
-      for (size_t i = 0; i < percentage_cores.size(); i++) {
-        m_label->replace_token("%percentage-core" + to_string(i + 1) + "%", percentage_cores[i]);
+        for (size_t i = 0; i < percentage_cores.size(); i++) {
+          label->replace_token("%percentage-core" + to_string(i + 1) + "%", percentage_cores[i]);
+        }
       }
     }
-
     return true;
+  }
+
+  string cpu_module::get_format() const {
+    if (static_cast<int>(m_total + 0.5) >= m_cpu_atcritical) {
+      return FORMAT_CRITICAL;
+    } else if (static_cast<int>(m_total + 0.5) >= m_cpu_atwarning) {
+      return FORMAT_WARN;
+    } else {
+      return DEFAULT_FORMAT;
+    }
   }
 
   bool cpu_module::build(builder* builder, const string& tag) const {
     if (tag == TAG_LABEL) {
-      builder->node(m_label);
+      builder->node(m_label.at(cpu_state::NORMAL));
+    } else if (tag == TAG_LABEL_WARN) {
+      builder->node(m_label.at(cpu_state::WARN));
+    } else if (tag == TAG_LABEL_CRITICAL) {
+      builder->node(m_label.at(cpu_state::CRITICAL));
     } else if (tag == TAG_BAR_LOAD) {
       builder->node(m_barload->output(m_total));
     } else if (tag == TAG_RAMP_LOAD) {
@@ -157,6 +191,6 @@ namespace modules {
 
     return math_util::cap<float>(percentage, 0, 100);
   }
-}
+}  // namespace modules
 
 POLYBAR_NS_END
