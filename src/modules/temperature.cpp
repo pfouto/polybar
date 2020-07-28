@@ -1,12 +1,12 @@
 #include "modules/temperature.hpp"
 
-#include "drawtypes/label.hpp"
-#include "drawtypes/ramp.hpp"
-#include "utils/file.hpp"
-#include "utils/math.hpp"
 #include <cmath>
 
+#include "drawtypes/label.hpp"
+#include "drawtypes/ramp.hpp"
 #include "modules/meta/base.inl"
+#include "utils/file.hpp"
+#include "utils/math.hpp"
 
 POLYBAR_NS
 
@@ -49,7 +49,7 @@ namespace modules {
     }
 
     // Deprecation warning for the %temperature% token
-    if((m_label[temp_state::NORMAL] && m_label[temp_state::NORMAL]->has_token("%temperature%")) ||
+    if ((m_label[temp_state::NORMAL] && m_label[temp_state::NORMAL]->has_token("%temperature%")) ||
         (m_label[temp_state::WARN] && m_label[temp_state::WARN]->has_token("%temperature%")) ||
         (m_label[temp_state::CRITICAL] && m_label[temp_state::CRITICAL]->has_token("%temperature%"))) {
       m_log.warn("%s: The token `%%temperature%%` is deprecated, use `%%temperature-c%%` instead.", name());
@@ -65,7 +65,7 @@ namespace modules {
     string temp_f_string = to_string(temp_f);
 
     // Add units if `units = true` in config
-    if(m_units) {
+    if (m_units) {
       temp_c_string += "°C";
       temp_f_string += "°F";
     }
@@ -95,7 +95,7 @@ namespace modules {
   string temperature_module::get_format() const {
     if (m_temp >= m_tempcritical) {
       return FORMAT_CRITICAL;
-    } else if (m_temp >= m_tempwarn){
+    } else if (m_temp >= m_tempwarn) {
       return FORMAT_WARN;
     } else {
       return DEFAULT_FORMAT;
@@ -116,6 +116,6 @@ namespace modules {
     }
     return true;
   }
-}
+}  // namespace modules
 
 POLYBAR_NS_END
